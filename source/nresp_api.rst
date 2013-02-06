@@ -6,15 +6,22 @@
 functions
 -------------------
 
+.. py:function:: __init__()
+
+   initialize the nresp()
+
+
 .. py:function:: conndb()
 
 
    connecting the database
+   
+   Examples:
 
-.. py:function:: __init__()
+   >>> nc = nresp.nresp()
+   >>> nc.__init__()
+   >>> nc.conndb()
 
-
-   initialize the nresp()
 
 .. py:function:: calc_area(<table>, <geometry column>, [criteria column], [criteria value])
 
