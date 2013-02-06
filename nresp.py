@@ -32,13 +32,20 @@ class nresp():
     def __init__(self):
         self.conn = None
 
-    def conndb(self, db_host='140.112.82.15', db_name='nresp_db', db_user='postgres'):
+    def pgpass(self, pgpassfile='.pgpass'):
+        f = open(pgpassfile, 'rb')
+        pgpass = f.readlines()
+        result = pgpass[0].replace('\n', '').split(':')
+        return(result)
+
+    def conndb(self):
         if self.conn == None:
-            self.h = db_host
-            self.n = db_name
-            self.u = db_user
-            passwd = 'postgres1119'
-            conn_string = "host='%s' dbname='%s' user='%s' password='%s'" % (db_host, db_name, db_user, passwd)
+            p = self.pgpass()
+            self.h = p[0]
+            self.n = p[2]
+            self.u = p[3]
+            passwd = p[4]
+            conn_string = "host='%s' dbname='%s' user='%s' password='%s'" % (self.h, self.n, self.u, passwd)
             try:
                 conn = psycopg2.connect(conn_string)
                 self.conn = conn
@@ -421,13 +428,19 @@ class nresp():
     def find_sp_gnum(self, sp, sp_tab, sp_col, geo_tab, geo_col, \
             sp_geom_col='the_geom', geo_geom_col='the_geom'):
         """
-        Abstract:
-        --------------------
+        Abstract
+        --------
         find_sp_gnum will calculate the bioecozones number intesecting species range
         and bioecozones.
 
-        Example:
-        --------------------
+        Parameters
+        ----------
+
+
+        Examples
+        --------
+        >>> find_sp_gnum('Babina adenopleura', 'all_amphibians_oct2012_s', \
+                'binomial', 'gens_v2_valid', 'genzv2_seq')
 
         """
         try:
@@ -436,12 +449,14 @@ class nresp():
             # from sp_tab s, geo_tab g
             # where s.sp_col='sp' and st_intersects(s.the_geom, g.the_geom)
             # ex: 
-            gensv2_sql = """ SELECT i.%s, sum(i.area) (
+            gensv2_sql = """ SELECT i.%s, sum(i.area) FROM (
             SELECT st_area(st_intersection(s.%s, g.%s)::geography) area, g.%s 
             from %s s, %s g 
-            where s.%s='%s' and st_intersects(s.%s, g.%s)) as i group by i.%s, i.area;
-            """ % ( geo_col, sp_geom_col, geo_geom_col, geo_col, \
-                    sp_tab, geo_tab, sp_col, sp, sp_geom_col, geo_geom_col )
+            where s.%s='%s' and st_intersects(s.%s, g.%s)) as i group by i.%s;
+            """ % ( geo_col, \
+                    sp_geom_col, geo_geom_col, geo_col, \
+                    sp_tab, geo_tab, \
+                    sp_col, sp, sp_geom_col, geo_geom_col, geo_col )
             curs.execute(gensv2_sql)
             gensv2_num = curs.fetchone()
             g_num = int(gensv2_num[0])
@@ -511,7 +526,7 @@ class nresp():
             print(pe)
         curs.close()
 
-    def tab_attrlist(self, table, col):
+    def tab_attrlist(self, table, col, criteria=''):
         """
         Abstract
         --------
@@ -527,8 +542,16 @@ class nresp():
         """
         try:
             curs = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-            query = """ SELECT distinct %s FROM %s WHERE %s IS NOT NULL ORDER BY %s;
-            """ % ( col, table, col,  col )
+            if criteria is '':
+                query = """ SELECT distinct %s FROM %s WHERE %s IS NOT NULL ORDER BY %s;
+                """ % ( col, table, col,  col )
+            else:
+                query = """ SELECT distinct %s FROM %s
+                WHERE %s AND %s IS NOT NULL
+                ORDER BY %s;
+                """ % ( col, table, \
+                        criteria, col, \
+                        col )
             curs.execute(query)
             result = curs.fetchall()
             rlist = []

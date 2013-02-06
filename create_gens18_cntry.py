@@ -8,7 +8,11 @@ nc = nresp.nresp()
 nc.__init__()
 nc.conndb()
 
-clist = nc.tab_attrlist('world_adm0_noantarct', 'gmi_cntry')
+clist = nc.tab_attrlist('world_adm0_noantarct', 'gmi_cntry', "region='Asia'")
+cclist = []
+for i in xrange(len(clist)):
+    if clist[i] is not '':
+        cclist.append(clist[i])
 p = ProgressBar('green', width=50, block='#', empty=' ')
 
 for i in xrange(len(clist)):
