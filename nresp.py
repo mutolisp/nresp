@@ -23,6 +23,7 @@
 import psycopg2, psycopg2.extras
 from getpass import getpass
 import glob, os, subprocess
+import csv
 
 class nresp():
     """
@@ -110,7 +111,7 @@ class nresp():
                 print("Please connect db with nresp(dbhost, dbname, dbuser) first!")
             else:
                 curs = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-                sql_drop_tab = "DROP TABLE IF EXISTS o_%s" % cntry
+                sql_drop_tab = "DROP TABLE IF EXISTS %s_%s" % ( prefix, cntry )
                 curs.execute(sql_drop_tab)
                 self.conn.commit()
                 sql_create_tab = """ 
@@ -136,23 +137,23 @@ class nresp():
             print(ed1)
         curs.close()
 
-    def calc_area(self, ctab, col, crcol='', crval=''):
+    def calc_area(self, ctab, col, criteria='', crvalue=''):
         """
         Abstract:
         --------------------
         Calc_refarea will calculate the total area (square kilometers) of reference area
-        calc_refarea(<reference area table>, <geometry column>, [criteria column], [criteria value])
+        calc_refarea(<reference area table>, <geometry column>, [criteria], [criteria value])
         
         
         Example:
         --------------------
-        >>> calc_refarea('asia_countries', 'the_geom')
+        >>> calc_area('asia_countries', 'the_geom')
         '44914379.5764'
 
-        >>> calc_refarea('asia_countries', 'the_geom', 'cntry_name', 'Taiwan')
+        >>> calc_area('asia_countries', 'the_geom', 'cntry_name', 'Taiwan')
         '36021.0007'
         ----
-        ReturnVal: float (precision: .4)
+        ReturnVal: float (precision: .4) or dictionary list
 
         """
         try:
@@ -161,24 +162,26 @@ class nresp():
             else:
                 try:
                     curs = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-                    if crcol is None or crval is None:
+                    if criteria is '':
                         sql_calc_refarea = """
                         SELECT sum(ST_Area(%s::geography)/1000000) 
                         FROM %s;
                         """ % ( col, ctab )
-                    else:
-                        sql_calc_refarea = """
-                        SELECT sum(ST_Area(%s::geography)/1000000) 
-                        FROM %s
-                        WHERE %s = '%s';
-                        """ % ( col, ctab, crcol, crval )
-                    try:
                         curs.execute(sql_calc_refarea)
                         refarea_f = curs.fetchone()
-                    except Exception, pe:
-                        print(pe)
-                    ref_area = float(format(refarea_f[0], '.4f'))
-                    return(ref_area)
+                        rlist = float(format(refarea_f[0], '.4f'))
+                    else:
+                        sql_calc_refarea = """
+                        SELECT %s, sum(ST_Area(%s::geography)/1000000) 
+                        FROM %s 
+                        WHERE %s = '%s' group by %s.%s;
+                        """ % ( criteria, col, ctab, criteria, crvalue, ctab, criteria )
+                        curs.execute(sql_calc_refarea)
+                        refarea_f = curs.fetchall()
+                        rlist = refarea_f
+                    if len(rlist) == 1:
+                        rlist = rlist[0]
+                    return(rlist)
                 except Exception, ed2:
                     pass
                     print(ed2)
@@ -207,20 +210,24 @@ class nresp():
             curs = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
             sql_query = """SELECT * FROM 
             (SELECT w.%s, sum(ST_Area(ST_Intersection(sp.%s,w.%s)::geography)/1000000) sqkm 
-                   FROM %s sp, %s w WHERE sp.%s = '%s' group by w.%s) as i 
+                   FROM %s sp, %s w WHERE sp.%s = '%s' 
+                   AND ST_Intersects(sp.%s,w.%s) group by w.%s) as i 
             WHERE sqkm > 0;
 
-            """ % ( b_col, geom_acol, geom_bcol, a_tab, b_tab, a_col, a, b_col )
+            """ % ( b_col, geom_acol, geom_bcol, \
+                    a_tab, b_tab, a_col, a, \
+                    geom_acol, geom_bcol, b_col )
             curs.execute(sql_query)
             output = curs.fetchall()
-            return(output)
+            return(output[0])
         except Exception, pe:
             pass
             self.conn.rollback()
             print(pe)
         curs.close()
 
-    def cal_dpexp(self, sp, sp_tab, sp_col, geo_tab, ref_area, sp_geom_col='the_geom', geo_geom_col='the_geom'):
+    def calc_dpexp(self, sp, sp_tab, sp_col, geo_tab, ref_area, sp_geom_col='the_geom', \
+            geo_geom_col='the_geom', dpexp_col='dpexp'):
         """
         Abstract:
         --------------------
@@ -232,24 +239,31 @@ class nresp():
 
         Example:
         --------------------
-        >>> cal_dpexp('Babina adenopleura', 'all_amphibians_oct2012_s', 'binomial',
-                  'gensv2_s')
+        >>> calc_dpexp('Babina adenopleura', 'all_amphibians_oct2012_s', 'binomial',
+                  'gensv2_s', 52069453.5595)
 
         """
         try:
             curs = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-            sql_dpexp = """UPDATE %s SET dpexp = 
+            sql_dpexp = """UPDATE %s SET %s = 
                         (SELECT sum(ST_Area(ST_Intersection(sp.%s,w.%s)::geography)/1000000) sqkm 
-                        FROM  %s sp, %s w WHERE %s = '%s')/%s WHERE %s = '%s'; 
-            """ % ( sptab, sp_geom_col, geo_geom_col, sp_tab, geo_tab, sp_col, sp, ref_area, sp_col, sp )
+                        FROM  %s sp, %s w WHERE ST_Intersects(sp.%s, w.%s) AND %s = '%s')/%s 
+                        WHERE %s = '%s'; 
+            """ % ( sp_tab, dpexp_col, \
+                    sp_geom_col, geo_geom_col, \
+                    sp_tab, geo_tab, sp_geom_col, geo_geom_col, sp_col, sp, ref_area, \
+                    sp_col, sp )
             curs.execute(sql_dpexp)
             self.conn.commit()
+            sql_query = """ SELECT %s FROM %s WHERE %s = '%s' """ % ( dpexp_col, sp_tab, sp_col, sp )
+            curs.execute(sql_query)
+            out = curs.fetchone()
+            return(out)
         except Exception, pe:
             pass
             self.conn.rollback()
             print(pe)
         curs.close()
-
 
     def calc_dpobs(self, cntry, foc_area, cntry_tab_prefix='o'):
         """
@@ -383,7 +397,8 @@ class nresp():
             sql_find_class = """UPDATE %s SET resp_class = g.nresp_class
                 FROM (select iucn_level, nresp_class, nresp_code from iucn_category) g
                 WHERE g.iucn_level=%s.iucn_status and g.nresp_code = %s.resp_val
-            """ % ( ftab, cntry, ftab, ftab )
+            """ % ( ftab, \
+                    ftab, ftab )
             curs.execute(sql_find_class)
             self.conn.commit()
         except Exception, pe:
@@ -414,9 +429,11 @@ class nresp():
             # update ftab set ucol = (select distinct ocol from otab where
             # sp_col='sp') where sp_col='sp';
             update_sql = """ update %s set 
-            %s = (select distinct %s from 
-            %s where %s='%s') where %s='%s';
-            """ % ( ftab, ucol, ocol, otab, sp_col, sp, sp_col, sp )
+            %s = (select %s from 
+            %s where %s='%s' group by %s ) where %s='%s';
+            """ % ( ftab, \
+                    ucol, ocol, \
+                    otab, sp_col, sp, ocol, sp_col, sp )
             curs.execute(update_sql)
             self.conn.commit()
         except Exception, pe:
@@ -526,6 +543,41 @@ class nresp():
             print(pe)
         curs.close()
 
+    def intst_gnumlist(self, a_tab, a_col, a, b_tab, b_col, geom_acol='the_geom', geom_bcol='the_geom'):
+        """
+        Intersect <a_col>'s <a> record in <a_tab> and <b_tab>, then
+        find the intersecting attributes of <b_col>
+
+
+        Returns:
+        --------
+        dictionary list
+
+        Examples:
+        ---------
+        >>> nc.intst_gnumlist('all_amphibians_oct2012_s', 'binomial', 'Babina adenopleura', \
+                'gens_v2_valid', 'genzv2_seq')
+        [[14], [10], [11], [18], [13], [5]]
+        """
+        try:
+            curs = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+            query = """ SELECT distinct g.%s FROM %s s, %s g
+                WHERE s.%s='%s' AND ST_Intersects(s.%s, g.%s) 
+                AND g.%s IS NOT NULL;
+            """ % ( b_col, a_tab, b_tab, \
+                    a_col, a, geom_acol, geom_bcol, \
+                    b_col )
+            curs.execute(query)
+            result = curs.fetchall()
+            return(result)
+        except Exception, pe:
+            pass
+            self.conn.rollback()
+            print(pe)
+        curs.close()
+        
+
+
     def tab_attrlist(self, table, col, criteria=''):
         """
         Abstract
@@ -558,6 +610,49 @@ class nresp():
             for i in xrange(len(result)):
                 rlist.append(result[i][0])
             return(rlist)
+        except Exception, pe:
+            pass
+            self.conn.rollback()
+            print(pe)
+        curs.close()
+
+    def export_table(self, table, order_col):
+        """
+        Abstract
+        --------
+        Export results to csvfile
+
+        Examples
+        --------
+        # export 'o_taiwan' table and sort the table by 'binomial' column
+        >>> export_results('o_taiwan', 'binomial')
+
+        """
+        try:
+            curs = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+            export =  """ SELECT distinct * FROM %s
+            ORDER BY %s
+            """ % ( table, order_col )
+            curs.execute(export)
+            results = curs.fetchall()
+            get_colname = """select column_name 
+            from information_schema.columns
+            where table_name = '%s';
+            """ % table
+            curs.execute(get_colname)
+            colname = curs.fetchall()
+            outfile = '%s.csv' % table
+            f = open(outfile , 'wb')
+            cwriter = csv.writer(f)
+            # the output of information_schema column names
+            # in postgresql is reversed sequence (newer the upper)
+            ccolname = []
+            for line in reversed(xrange(len(colname))):
+                ccolname.append(colname[line][0])
+            cwriter.writerow(ccolname)
+            for line in xrange(len(results)):
+                cwriter.writerow(results[line])
+            f.close()
         except Exception, pe:
             pass
             self.conn.rollback()

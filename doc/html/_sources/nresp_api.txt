@@ -1,10 +1,13 @@
 :mod:`nresp` National responsibility and biodiversity assessment tools
 ======================================================================
-.. module:: nresp
+
+The ``nresp`` class
+===================
+
+.. class:: nresp
+
    :synopsis: general nresp library
 
-functions
--------------------
 
 .. py:function:: __init__()
 
@@ -38,9 +41,13 @@ functions
    >>> nc.calc_area('asia_countries', 'the_geom',  'cntry_name', 'Taiwan')
    36021.0007
  
-.. note:: calc_area() use postgis ST_Area(geom::geography) to calculate the area, 
-   thus the geometry column of given table should be valid WGS 1984 (EPSG:4326) coordinate system 
-  
+   .. note:: 
+      
+
+      calc_area() use postgis ST_Area(geom::geography) to calculate the area, 
+      thus the geometry column of given table should be valid WGS 1984 (EPSG:4326) coordinate system 
+
+
 .. py:function:: cal_dpexp(<sp>, <sp_tab>, <sp_col>, <geo_tab>, <ref_area>, [sp_geom_col='the_geom'], [geo_geom_col='the_geom'])
    
 
@@ -122,9 +129,12 @@ functions
 
    >>> nc.create_ocntry_tab('taiwan')
 
-.. note::
+   .. note::
 
-   create_ocntry_tab will destroy existing table!
+   
+      create_ocntry_tab will destroy existing table!
+
+
 
 .. py:function:: find_gensv2(<sp>)
 
@@ -134,6 +144,14 @@ functions
    
    intst_area() will find the intersecting area of given two polygons (or two multipolygons).
    <a_tab> and <b_tab> are the the table names with a valid polygon geometry column (default is 'the_geom'). <a> is target attribute in <a_col>, while <b_col> is the target attribute to intersect with <a> in <a_col>.
+
+   :param <a_tab>: table a, which contains species data
+   :param <a>: instance a, ex: 'Babina adenopleura'
+   :param <a_col>: column name contains <a>, ex: species
+   :param <b_tab>: table b, which is geographical layers, such as country
+   :param <b_col>: column name of <b_tab>, ex: 'name' (of countries)
+   :param [geom_acol]: geometry column of table <a_tab>
+   :param [geom_acol]: geometry column of table <b_tab>
 
    Examples:
 
@@ -147,6 +165,25 @@ functions
 
    Examples:
    
+
+.. py:function:: intst_gnumlist(<a_tab>, <a_col>, <a>, <b_tab>, <b_col>, [geom_acol='the_geom'], [geom_bcol='the_geom'])
+
+
+   Intersect <a_col>'s <a> record in <a_tab> and <b_tab>, then
+   find the intersecting attributes of <b_col>
+
+
+   Returns:
+
+   dictionary list
+
+   Examples:
+
+   >>> nc.intst_attrlist('all_amphibians_oct2012_s', 'binomial', 'Babina adenopleura', \
+           'gens_v2_valid', 'genzv2_seq')
+   [[14], [10], [11], [18], [13], [5]]
+
+
 
 .. py:function:: update_cntry_col(<sp>, <sp_col>, <cntry>, <ucol>, <otab>, <ocol>, [cntry_tab_prefix='o'])
 
