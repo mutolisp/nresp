@@ -18,7 +18,7 @@ ecozone_tab = 'gens_v2_valid'
 region_tab = 'world_adm0_asia'
 iucnlvl_tab = 'iucn_category'
 taxonomy_tab = 'amphibian_higher_taxonomy'
-outpref = 'oa'
+outpref = 'o'
 
 
 # target countries: asia
@@ -33,6 +33,31 @@ for i in xrange(len(clist)):
 for i in xrange(len(cclist)):
     nc.create_ocntry_tab(cclist[i], outpref)
 
+
+### <E1_Method>
+
+refarea = nc.calc_area('world_adm0_asia', 'the_geom')
+
+### 1. Calculate species level information
+#
+# 1.0 Get species list 
+slist = nc.tab_attrlist(species_tab, species_col)
+
+
+### 1.1 Calculate DPEXP of each species ####
+# calculate dpexp= {species area in terrestrial region}/(reference area)
+# reference area is defined as the total geo-ecozone area contains the
+# target species
+# calculate the geo-ecozones intersected by species range
+for s in xrange(len(slist)):
+    # update dpexp to species table
+    nc.calc_dpexp(slist[s], species_tab, species_col, ecozone_tab, refarea, dpexp_col='dpexp_18_g2e1')
+
+
+### </E1_Method>
+
+
+### <E2_Method>
 # 0.2 calculate geo-econzon basic information:
 # a) reference area: get list each attribute (genzv2_seq)
 # get distinct genzv2_seq records of gens_v2_valid
@@ -46,24 +71,11 @@ for i in xrange(len(glist)):
     rv = nc.calc_area(ecozone_tab, 'the_geom', cr, crvalue)
     ga.update({rv[0]:rv[1]})
 
-# 0.3 get country areas
-# note: column 'area_sqkm' needs to be calculated first 
-# get 
-get_area_sql = """select gmi_cntry, sum(area_sqkm) 
-from %s
-where region='Asia' and gmi_cntry ~ '[A-Z]' 
-group by gmi_cntry
-order by gmi_cntry;
-""" % country_tab
-
-curs.execute(get_area_sql)
-cntry_area = dict(curs.fetchall())
-
 
 ### 1. Calculate species level information
 #
 # 1.0 Get species list 
-slist = nc.tab_attrlist(species_tab, species_col, 'dpexp=0')
+slist = nc.tab_attrlist(species_tab, species_col)
 
 
 ### 1.1 Calculate DPEXP of each species ####
@@ -79,6 +91,6 @@ for s in xrange(len(slist)):
     for i in xrange(len(sp_ilist)):
         refarea = refarea + ga[sp_ilist[i][0]]
     # update dpexp to species table
-    nc.calc_dpexp(slist[s], species_tab, species_col, ecozone_tab, refarea)
+    nc.calc_dpexp(slist[s], species_tab, species_col, ecozone_tab, refarea, dpexp_col='dpexp_18_g2e2')
 
-
+### </E2_Method>

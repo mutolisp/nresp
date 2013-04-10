@@ -179,8 +179,6 @@ class nresp():
                         curs.execute(sql_calc_refarea)
                         refarea_f = curs.fetchall()
                         rlist = refarea_f
-                    if len(rlist) == 1:
-                        rlist = rlist[0]
                     return(rlist)
                 except Exception, ed2:
                     pass
@@ -191,7 +189,7 @@ class nresp():
             print(ed21)
         curs.close()
 
-    def intst_area(self, a_tab, a, a_col, b_tab, b_col, geom_acol='the_geom', geom_bcol='the_geom'):
+    def intst_area(self, a_tab, a, a_col, b_tab, geom_acol='the_geom', geom_bcol='the_geom'):
         """
         Abstract:
         --------------------
@@ -209,17 +207,20 @@ class nresp():
         try:
             curs = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
             sql_query = """SELECT * FROM 
-            (SELECT w.%s, sum(ST_Area(ST_Intersection(sp.%s,w.%s)::geography)/1000000) sqkm 
+            (SELECT sum(ST_Area(ST_Intersection(sp.%s,w.%s)::geography)/1000000) sqkm 
                    FROM %s sp, %s w WHERE sp.%s = '%s' 
-                   AND ST_Intersects(sp.%s,w.%s) group by w.%s) as i 
+                   AND ST_Intersects(sp.%s,w.%s)) as i 
             WHERE sqkm > 0;
 
-            """ % ( b_col, geom_acol, geom_bcol, \
+            """ % ( geom_acol, geom_bcol, \
                     a_tab, b_tab, a_col, a, \
-                    geom_acol, geom_bcol, b_col )
+                    geom_acol, geom_bcol)
             curs.execute(sql_query)
             output = curs.fetchall()
-            return(output[0])
+            if len(output) > 0:
+                return(output[0])
+            else:
+                return(0)
         except Exception, pe:
             pass
             self.conn.rollback()
